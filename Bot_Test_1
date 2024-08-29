@@ -1,0 +1,239 @@
+import logging
+
+from aiogram import Bot, Dispatcher, types
+
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+
+from aiogram.filters import Command
+
+from aiogram import Router, F
+
+from aiogram.fsm.context import FSMContext
+
+from aiogram.fsm.storage.memory import MemoryStorage
+
+from aiogram.utils.chat_action import ChatActionSender
+
+
+
+# Імпорт Message із aiogram 3.x
+
+from aiogram.types import Message  # Ось правильний імпорт Message для aiogram 3.x
+
+
+
+# Встановлюємо логування
+
+logging.basicConfig(level=logging.INFO)
+
+
+
+# Встав свій токен сюди
+
+API_TOKEN = '7504196589:AAHOmQDIX4ReP2w-_HFIVMXK4_SnWlF6PQA'
+
+
+
+# Ініціалізуємо бота та диспетчер
+
+bot = Bot(token=API_TOKEN)
+
+dp = Dispatcher(storage=MemoryStorage())
+
+router = Router()
+
+
+
+# Визначаємо ADMIN_CHAT_ID глобально
+
+ADMIN_CHAT_ID = -1001607690028  # Замінити на фактичний ID чату адміністратора
+
+
+
+# Словник для збереження інформації про користувачів і їх повідомлення
+
+user_data = {}  # Структура: { admin_message_id: { "user_id": int, "chat_id": int }}
+
+
+
+# Словник для збереження інформації про користувачів і їх повідомлення
+
+user_data = {}
+
+
+
+# Команда /start - відправляє привітальне повідомлення з кнопками
+
+@router.message(Command("start"))
+
+async def send_welcome(message: types.Message):
+
+    # Створюємо клавіатуру з 5 кнопками
+
+    keyboard = InlineKeyboardMarkup(
+
+        inline_keyboard=[
+
+            [InlineKeyboardButton(text="Жалобы на участников", callback_data="button_1")],
+
+            [InlineKeyboardButton(text="Получение приписки", callback_data="button_2")],
+
+            [InlineKeyboardButton(text="Апеляция наказания", callback_data="button_3")],
+
+            [InlineKeyboardButton(text="Покупка рекламы/ Поддержать разраба бота", callback_data="button_4")],
+
+            [InlineKeyboardButton(text="Предложения для чата", callback_data="reply_message")]
+
+        ]
+
+    )
+
+    
+
+    # Відправляємо повідомлення з кнопками
+
+    await message.answer("Привіт! Обери дію:", reply_markup=keyboard)
+
+
+
+# Функція для обробки натискання кнопок і пересилання до адміністратора
+
+async def process_button_press(callback_query: CallbackQuery, button_name: str):
+
+    user_id = callback_query.from_user.id
+
+    username = callback_query.from_user.username
+
+
+
+    # Зберігаємо натискання користувачем кнопок
+
+    if user_id not in user_data:
+
+        user_data[user_id] = []
+
+    user_data[user_id].append(button_name)
+
+
+
+    # Оновлюємо повідомлення користувача
+
+    buttons_pressed = "\n".join(user_data[user_id])
+
+    new_message_text = f"Ви натиснули такі кнопки:\n{buttons_pressed}"
+
+    await callback_query.message.edit_text(new_message_text)
+
+
+
+    # Надсилаємо повідомлення до адміністратора
+
+    admin_message = f"Користувач @{username} (ID: {user_id}) натиснув кнопку '{button_name}'."
+
+    sent_message = await bot.send_message(ADMIN_CHAT_ID, admin_message)
+
+    
+
+    # Зберігаємо ID повідомлення адміністратора та користувача для подальшої відповіді
+
+    user_data[user_id].append({"admin_message_id": sent_message.message_id, "chat_id": callback_query.message.chat.id})
+
+
+
+    # Закриваємо індикатор завантаження
+
+    await callback_query.answer()
+
+
+
+# Обробляємо натискання на кнопки
+
+@router.callback_query(F.data == "button_1")
+
+async def button_1_handler(callback_query: CallbackQuery):
+
+    await process_button_press(callback_query, "Жалобы на участников")
+
+    await bot.send_message(callback_query.from_user.id, "Укажите какие правила были нарушены, и прикрепите доказательство, чтобы прикрепить скриншот или видео нужно опубликовать его(Наприме: ютуб, Imgur) и позвать свидетелей нарушения(если присутствуют)")
+
+
+
+@router.callback_query(F.data == "button_2")
+
+async def button_2_handler(callback_query: CallbackQuery):
+
+    await process_button_press(callback_query, "Получение приписки")
+
+
+
+@router.callback_query(F.data == "button_3")
+
+async def button_3_handler(callback_query: CallbackQuery):
+
+    await process_button_press(callback_query, "Апеляция наказаний")
+
+
+
+@router.callback_query(F.data == "button_4")
+
+async def button_4_handler(callback_query: CallbackQuery):
+
+    await process_button_press(callback_query, "Покупка рекламы/Поддержать разраба бота")
+
+
+
+@router.callback_query(F.data == "reply_message")
+
+async def reply_message_handler(callback_query: CallbackQuery):
+
+    await process_button_press(callback_query, "Предложения для чата")
+
+
+
+# Обробляємо відповіді адміністратора в ADMIN_CHAT_ID
+
+@router.message(F.reply_to_message)
+
+async def handle_admin_reply(message: Message):
+
+    replied_message_id = message.reply_to_message.message_id
+
+
+
+    # Знаходимо користувача за повідомленням адміністратора
+
+    for user_id, data in user_data.items():
+
+        for entry in data:
+
+            if isinstance(entry, dict) and entry.get("admin_message_id") == replied_message_id:
+
+                # Отримуємо ID чату та надсилаємо повідомлення користувачу
+
+                chat_id = entry["chat_id"]
+
+                await bot.send_message(chat_id, f"Відповідь адміністратора: {message.text}")
+
+                break
+
+
+
+# Додаємо роутери до диспетчера
+
+dp.include_router(router)
+
+
+
+# Асинхронний запуск бота
+
+async def main():
+
+    await dp.start_polling(bot)
+
+
+
+if __name__ == '__main__':
+
+    import asyncio
+
+    asyncio.run(main())
